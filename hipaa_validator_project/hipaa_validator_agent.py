@@ -1,13 +1,19 @@
+from agno.agent import Agent
+from agno.tools import tool
+from agno.models.openai.chat import OpenAIChatModel
 import os
-from openai import OpenAI
-from typing import Dict, List
 from dotenv import load_dotenv
 
-# Load environment variables
+model = OpenAIChatModel(name="gpt-4o")
+
+
+
+# Load your OpenAI API key from .env file
 load_dotenv()
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
 
 # PHI detection tool
+@tool
 def detect_phi(input_text: str) -> str:
     result = {
         "status": "Non-Compliant",
@@ -34,6 +40,7 @@ def detect_phi(input_text: str) -> str:
     )
 
 # User rights assessment tool
+@tool
 def assess_user_rights(input_text: str) -> str:
     result = {
         "status": "Needs Review",
@@ -58,34 +65,13 @@ def assess_user_rights(input_text: str) -> str:
         f"Recommendation: {result['recommendation']}"
     )
 
-class HIPAAAgent:
-    def __init__(self, model_name: str = "gpt-4"):
-        self.model_name = model_name
-        self.tools = {
-            "detect_phi": detect_phi,
-            "assess_user_rights": assess_user_rights
-        }
-
-    def run(self, prompt: str, tool_name: str) -> str:
-        if tool_name not in self.tools:
-            return f"Error: Tool '{tool_name}' not found"
-        
-        # First get the tool selection from the model
-        tool_response = self._get_tool_selection(prompt, tool_name)
-        
-        # Then execute the selected tool
-        return self.tools[tool_name](tool_response)
-
-    def _get_tool_selection(self, prompt: str, tool_name: str) -> str:
-        response = client.chat.completions.create(
-            model=self.model_name,
-            messages=[
-                {"role": "system", "content": f"You are a HIPAA compliance assistant. The user wants to use the {tool_name} tool."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.3
-        )
-        return response.choices[0].message.content
+# Create agent with model string
+agent = Agent(
+    name="HIPAA Compliance Agent",
+    instructions="You are a compliance agent that detects PHI and assesses HIPAA user rights controls.",
+    tools=[detect_phi, assess_user_rights],
+    model=model
+)
 
 # Test input
 test_text = (
@@ -95,11 +81,9 @@ test_text = (
     "Principle of least privilege enforced.\nAudit logs are maintained."
 )
 
-# Initialize and run the agent
-agent = HIPAAAgent()
-
+# Run
 print("\nPHI DETECTION RESULT")
-print(agent.run(test_text, "detect_phi"))
+print(agent.run(f"detect_phi: {test_text}").content)
 
 print("\nUSER RIGHTS CHECK RESULT")
-print(agent.run(test_text, "assess_user_rights"))
+print(agent.run(f"assess_user_rights: {test_text}").content)
